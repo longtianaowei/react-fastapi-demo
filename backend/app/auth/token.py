@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.model.user import RefreshToken
 
 
-REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "30"))
+REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
 
 
 def create_refresh_token(db: Session, user_id: int):

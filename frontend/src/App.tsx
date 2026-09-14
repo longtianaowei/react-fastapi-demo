@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import { login, logout, me } from "./api/auth";
+import { login, logout, me, restoreSession } from "./api/auth";
 import type { CurrentUser } from "./api/auth";
 import { createUser, deleteUser, getUsers } from "./api/user";
 import type { User } from "./types/user";
@@ -50,27 +50,21 @@ function App() {
       setCurrentUser(null);
       setUsers([]);
       setShowForm(false);
-      setLoginError("登录已过期，请重新登录。");
+      setLoginError("会话已失效，请重新登录。");
     };
 
     window.addEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
 
-    if (!window.localStorage.getItem("access_token") && !window.localStorage.getItem("refresh_token")) {
-      queueMicrotask(() => {
+    restoreSession()
+      .then((user) => {
+        if (active) setCurrentUser(user);
+      })
+      .catch(() => {
+        if (active) setCurrentUser(null);
+      })
+      .finally(() => {
         if (active) setIsRestoring(false);
       });
-    } else {
-      me()
-        .then((user) => {
-          if (active) setCurrentUser(user);
-        })
-        .catch(() => {
-          if (active) setCurrentUser(null);
-        })
-        .finally(() => {
-          if (active) setIsRestoring(false);
-        });
-    }
 
     return () => {
       active = false;

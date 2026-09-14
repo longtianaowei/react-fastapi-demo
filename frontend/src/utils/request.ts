@@ -11,31 +11,32 @@ export const SESSION_EXPIRED_EVENT = "auth:session-expired";
 
 const client = axios.create({
   baseURL: BASE_URL,
+  withCredentials: true,
 });
 
 const rawClient = axios.create({
   baseURL: BASE_URL,
+  withCredentials: true,
 });
 
 type TokenData = {
   access_token: string;
-  refresh_token: string;
+  token_type: string;
 };
 
 type RetryRequestConfig = InternalAxiosRequestConfig & {
   _retry?: boolean;
 };
 
+let accessToken: string | null = null;
 let refreshPromise: Promise<TokenData> | null = null;
 
-function setTokens(accessToken: string, refreshToken: string) {
-  window.localStorage.setItem("access_token", accessToken);
-  window.localStorage.setItem("refresh_token", refreshToken);
+function setTokens(token: string) {
+  accessToken = token;
 }
 
 function clearTokens() {
-  window.localStorage.removeItem("access_token");
-  window.localStorage.removeItem("refresh_token");
+  accessToken = null;
 }
 
 function expireSession() {
@@ -43,16 +44,16 @@ function expireSession() {
   window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
 }
 
-function refreshTokens(refreshToken: string) {
+function refreshTokens() {
   if (!refreshPromise) {
     refreshPromise = rawClient
-      .post<ApiResponse<TokenData>>("/auth/refresh", { refresh_token: refreshToken })
+      .post<ApiResponse<TokenData>>("/auth/refresh")
       .then(({ data: result }) => {
         if (result.code !== 0) {
           throw new Error(result.message);
         }
 
-        setTokens(result.data.access_token, result.data.refresh_token);
+        setTokens(result.data.access_token);
         return result.data;
       })
       .finally(() => {
@@ -64,8 +65,6 @@ function refreshTokens(refreshToken: string) {
 }
 
 client.interceptors.request.use((config) => {
-  const accessToken = window.localStorage.getItem("access_token");
-
   if (accessToken) {
     config.headers.Authorization = `Bearer ${accessToken}`;
   }
@@ -90,35 +89,37 @@ client.interceptors.response.use(
   async (error: AxiosError<{ message?: string; detail?: string } | Blob>) => {
     const originalRequest = error.config as RetryRequestConfig | undefined;
     const status = error.response?.status;
-    const isLoginRequest = originalRequest?.url?.endsWith("/auth/login");
+    const isAuthRequest =
+      originalRequest?.url?.endsWith("/auth/login") ||
+      originalRequest?.url?.endsWith("/auth/refresh") ||
+      originalRequest?.url?.endsWith("/auth/logout");
 
-    if (status === 401 && originalRequest && !originalRequest._retry && !isLoginRequest) {
+    if (status === 401 && originalRequest && !originalRequest._retry && !isAuthRequest) {
       originalRequest._retry = true;
 
-      const currentAccessToken = window.localStorage.getItem("access_token");
       const requestAuthorization = originalRequest.headers.Authorization;
 
       if (
-        currentAccessToken &&
+        accessToken &&
         requestAuthorization &&
-        requestAuthorization !== `Bearer ${currentAccessToken}`
+        requestAuthorization !== `Bearer ${accessToken}`
       ) {
-        originalRequest.headers.Authorization = `Bearer ${currentAccessToken}`;
+        originalRequest.headers.Authorization = `Bearer ${accessToken}`;
         return client(originalRequest);
       }
 
-      const refreshToken = window.localStorage.getItem("refresh_token");
-
-      if (refreshToken) {
+      if (accessToken) {
         try {
-          const tokens = await refreshTokens(refreshToken);
+          const tokens = await refreshTokens();
           originalRequest.headers.Authorization = `Bearer ${tokens.access_token}`;
           return client(originalRequest);
-        } catch {
-          expireSession();
+        } catch (refreshError) {
+          if (axios.isAxiosError(refreshError) && refreshError.response?.status === 401) {
+            expireSession();
+          }
         }
       } else {
-        expireSession();
+        return Promise.reject(error);
       }
     }
 
@@ -145,7 +146,7 @@ const request = {
     return client.get<ApiResponse<T>>(url, config) as unknown as Promise<T>;
   },
 
-  post<T>(url: string, data: unknown, config?: AxiosRequestConfig): Promise<T> {
+  post<T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> {
     return client.post<ApiResponse<T>>(url, data, config) as unknown as Promise<T>;
   },
 

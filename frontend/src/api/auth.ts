@@ -2,7 +2,6 @@ import request from "@/utils/request";
 
 export interface TokenData {
   access_token: string;
-  refresh_token: string;
   token_type: string;
 }
 
@@ -14,7 +13,7 @@ export interface CurrentUser {
 
 export async function login(email: string, password: string) {
   const tokens = await request.post<TokenData>("/auth/login", { email, password });
-  request.setTokens(tokens.access_token, tokens.refresh_token);
+  request.setTokens(tokens.access_token);
   return tokens;
 }
 
@@ -22,13 +21,15 @@ export function me() {
   return request.get<CurrentUser>("/auth/me");
 }
 
-export async function logout() {
-  const refreshToken = window.localStorage.getItem("refresh_token");
+export async function restoreSession() {
+  const tokens = await request.post<TokenData>("/auth/refresh");
+  request.setTokens(tokens.access_token);
+  return me();
+}
 
+export async function logout() {
   try {
-    if (refreshToken) {
-      await request.post<null>("/auth/logout", { refresh_token: refreshToken });
-    }
+    await request.post<null>("/auth/logout");
   } finally {
     request.clearTokens();
   }
