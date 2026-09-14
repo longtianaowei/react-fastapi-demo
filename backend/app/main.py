@@ -4,17 +4,12 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.controller.auth_controller import router as auth_router
 from app.controller.export_controller import router as export_router
 from app.controller.file_controller import router as file_router
 from app.controller.user_controller import router
-from app.database import Base,engine
 from app.schema.response import ApiResponse
 
-
-
-Base.metadata.create_all(
-    bind=engine
-)
 
 
 app=FastAPI()
@@ -35,6 +30,7 @@ app.add_middleware(
 
 )
 app.include_router(router)
+app.include_router(auth_router)
 app.include_router(file_router)
 app.include_router(export_router)
 
@@ -50,7 +46,8 @@ def http_exception_handler(
         content=ApiResponse.error(
             code=exc.status_code,
             message=str(exc.detail)
-        ).model_dump()
+        ).model_dump(),
+        headers=exc.headers,
     )
 
 

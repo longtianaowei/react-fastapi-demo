@@ -1,32 +1,39 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+
+def normalize_email(value: str) -> str:
+    return value.strip().lower()
 
 
 class UserCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=50)
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=128)
 
-    name:str
+    model_config = ConfigDict(extra="forbid")
 
-    email:str
-
+    @field_validator("email")
+    @classmethod
+    def normalize_email_value(cls, value: EmailStr) -> str:
+        return normalize_email(str(value))
 
 
 class UserUpdate(BaseModel):
 
-    name:str
+    name: str
 
-    email:str
-
+    email: str
 
 
 class UserResponse(BaseModel):
 
-    id:int
+    id: int
 
-    name:str
+    name: str
 
-    email:str
+    email: str
 
 
     class Config:
 
-        from_attributes=True
+        from_attributes = True

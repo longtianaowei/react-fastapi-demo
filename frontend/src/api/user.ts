@@ -12,7 +12,7 @@ export function getUsers(page = 1, pageSize = 10) {
   });
 }
 
-export function createUser(data: { name: string; email: string }) {
+export function createUser(data: { name: string; email: string; password: string }) {
   return request.post<User>("/users/create", data);
 }
 

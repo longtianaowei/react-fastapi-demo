@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
+import { login, logout, me } from "./api/auth";
+import type { CurrentUser } from "./api/auth";
 import { createUser, deleteUser, getUsers } from "./api/user";
 import type { User } from "./types/user";
+import { SESSION_EXPIRED_EVENT } from "./utils/request";
 import "./styles.css";
 
 type Notice = { type: "success" | "error"; message: string } | null;
@@ -11,14 +14,20 @@ function initials(name: string) {
 }
 
 function App() {
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const [isRestoring, setIsRestoring] = useState(true);
+  const [loginForm, setLoginForm] = useState({ email: "", password: "" });
+  const [loginError, setLoginError] = useState("");
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
   const [query, setQuery] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
-  const [form, setForm] = useState({ name: "", email: "" });
+  const [form, setForm] = useState({ name: "", email: "", password: "" });
 
   async function load() {
     setIsLoading(true);
@@ -36,31 +45,88 @@ function App() {
   useEffect(() => {
     let active = true;
 
-    getUsers()
-      .then((response) => {
-        if (active) setUsers(response.items);
-      })
-      .catch(() => {
-        if (active) setNotice({ type: "error", message: "无法连接到服务，请确认后端已启动。" });
-      })
-      .finally(() => {
-        if (active) setIsLoading(false);
+    const handleSessionExpired = () => {
+      if (!active) return;
+      setCurrentUser(null);
+      setUsers([]);
+      setShowForm(false);
+      setLoginError("登录已过期，请重新登录。");
+    };
+
+    window.addEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
+
+    if (!window.localStorage.getItem("access_token") && !window.localStorage.getItem("refresh_token")) {
+      queueMicrotask(() => {
+        if (active) setIsRestoring(false);
       });
+    } else {
+      me()
+        .then((user) => {
+          if (active) setCurrentUser(user);
+        })
+        .catch(() => {
+          if (active) setCurrentUser(null);
+        })
+        .finally(() => {
+          if (active) setIsRestoring(false);
+        });
+    }
 
     return () => {
       active = false;
+      window.removeEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
     };
   }, []);
 
+  useEffect(() => {
+    if (currentUser) {
+      queueMicrotask(() => void load());
+    }
+  }, [currentUser]);
+
+  async function signIn(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsLoggingIn(true);
+    setLoginError("");
+
+    try {
+      await login(loginForm.email.trim(), loginForm.password);
+      const user = await me();
+      setCurrentUser(user);
+      setLoginForm({ email: "", password: "" });
+    } catch (error) {
+      setLoginError(error instanceof Error ? error.message : "登录失败，请稍后重试。");
+    } finally {
+      setIsLoggingIn(false);
+    }
+  }
+
+  async function signOut() {
+    setIsLoggingOut(true);
+    try {
+      await logout();
+    } finally {
+      setCurrentUser(null);
+      setUsers([]);
+      setNotice(null);
+      setShowForm(false);
+      setIsLoggingOut(false);
+    }
+  }
+
   async function add(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!form.name.trim() || !form.email.trim()) return;
+    if (!form.name.trim() || !form.email.trim() || form.password.length < 8) return;
 
     setIsSaving(true);
     setNotice(null);
     try {
-      await createUser({ name: form.name.trim(), email: form.email.trim() });
-      setForm({ name: "", email: "" });
+      await createUser({
+        name: form.name.trim(),
+        email: form.email.trim(),
+        password: form.password,
+      });
+      setForm({ name: "", email: "", password: "" });
       setShowForm(false);
       await load();
       setNotice({ type: "success", message: "用户已添加。" });
@@ -97,6 +163,37 @@ function App() {
     );
   }, [query, users]);
 
+  if (isRestoring) {
+    return (
+      <main className="auth-page">
+        <div className="auth-card auth-loading" role="status">
+          <span className="spinner" />
+          <strong>正在恢复会话</strong>
+          <p>请稍候片刻</p>
+        </div>
+      </main>
+    );
+  }
+
+  if (!currentUser) {
+    return (
+      <main className="auth-page">
+        <section className="auth-card" aria-labelledby="login-title">
+          <div className="auth-brand"><span className="brand-mark">N</span><span>Northstar</span></div>
+          <p className="eyebrow">管理工作空间</p>
+          <h1 id="login-title">欢迎回来</h1>
+          <p className="subtitle">登录后继续管理系统用户。</p>
+          {loginError && <div className="notice error" role="alert"><span>!</span>{loginError}</div>}
+          <form className="login-form" onSubmit={signIn}>
+            <label className="field"><span>邮箱地址</span><input autoFocus required type="email" autoComplete="email" value={loginForm.email} onChange={(event) => setLoginForm({ ...loginForm, email: event.target.value })} placeholder="name@example.com" /></label>
+            <label className="field"><span>密码</span><input required type="password" autoComplete="current-password" value={loginForm.password} onChange={(event) => setLoginForm({ ...loginForm, password: event.target.value })} placeholder="输入登录密码" /></label>
+            <button className="primary-button login-button" disabled={isLoggingIn}>{isLoggingIn && <span className="spinner small" />}{isLoggingIn ? "正在登录" : "登录"}</button>
+          </form>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -120,8 +217,9 @@ function App() {
         <header className="topbar">
           <div className="mobile-brand"><span className="brand-mark">N</span>Northstar</div>
           <div className="account">
-            <div className="account-copy"><strong>管理员</strong><span>admin@example.com</span></div>
-            <span className="avatar avatar-dark">AD</span>
+            <div className="account-copy"><strong>{currentUser.name}</strong><span>{currentUser.email}</span></div>
+            <span className="avatar avatar-dark">{initials(currentUser.name)}</span>
+            <button className="logout-button" onClick={() => void signOut()} disabled={isLoggingOut}>{isLoggingOut ? "退出中" : "退出"}</button>
           </div>
         </header>
 
@@ -196,6 +294,7 @@ function App() {
             <form onSubmit={add}>
               <label className="field"><span>姓名</span><input autoFocus required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="例如：张明" /></label>
               <label className="field"><span>邮箱地址</span><input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="name@example.com" /></label>
+              <label className="field"><span>密码</span><input required type="password" minLength={8} value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} placeholder="至少 8 位" /></label>
               <div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setShowForm(false)}>取消</button><button className="primary-button" disabled={isSaving}>{isSaving && <span className="spinner small" />}创建用户</button></div>
             </form>
           </section>

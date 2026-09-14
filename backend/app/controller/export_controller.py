@@ -9,6 +9,7 @@ from openpyxl import Workbook
 from sqlalchemy.orm import Session
 from starlette.background import BackgroundTask
 
+from app.auth.dependencies import require_admin
 from app.database import get_db
 from app.service.storage_service import storage_service
 from app.service.user_service import UserService
@@ -27,7 +28,10 @@ def delete_file(file_path: Path):
 
 
 @router.get("/users")
-def export_users(db: Session = Depends(get_db)):
+def export_users(
+    db: Session = Depends(get_db),
+    current_user=Depends(require_admin),
+):
     users, _ = service.list(
         db,
         page=1,

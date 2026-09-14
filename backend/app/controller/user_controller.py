@@ -2,6 +2,7 @@ from fastapi import APIRouter,Depends,Query
 
 from sqlalchemy.orm import Session
 
+from app.auth.dependencies import require_admin
 from app.database import get_db
 
 from app.schema.response import ApiResponse,PageData
@@ -31,7 +32,8 @@ service=UserService()
 def list_users(
     page:int=Query(1,ge=1),
     page_size:int=Query(10,ge=1,le=100),
-    db:Session=Depends(get_db)
+    db:Session=Depends(get_db),
+    current_user=Depends(require_admin)
 ):
 
     items,total=service.list(
@@ -57,16 +59,16 @@ def list_users(
 )
 def create_user(
     user:UserCreate,
-    db:Session=Depends(get_db)
+    db:Session=Depends(get_db),
+    current_user=Depends(require_admin)
 ):
 
-    return ApiResponse.success(
-        data=service.create(
-            db,
-            user
-        ),
-        message="创建成功"
-    )
+    try:
+        created_user = service.create(db, user)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+
+    return ApiResponse.success(data=created_user, message="创建成功")
 
 
 
@@ -76,7 +78,8 @@ def create_user(
 )
 def delete_user(
     id:int,
-    db:Session=Depends(get_db)
+    db:Session=Depends(get_db),
+    current_user=Depends(require_admin)
 ):
 
     user=service.delete(

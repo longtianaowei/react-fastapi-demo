@@ -1,9 +1,11 @@
 from pathlib import Path
+from urllib.parse import quote
 from uuid import uuid4
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse, Response
 
+from app.auth.dependencies import get_current_user
 from app.schema.response import ApiResponse
 from app.service.storage_service import storage_service
 
@@ -14,7 +16,10 @@ router = APIRouter(
 )
 
 @router.post("/upload")
-async def upload_file(file: UploadFile = File(...)):
+async def upload_file(
+    file: UploadFile = File(...),
+    current_user=Depends(get_current_user),
+):
     suffix = Path(file.filename or "").suffix
     stored_name = f"{uuid4().hex}{suffix}"
     stored_path = storage_service.root / "uploads" / stored_name
@@ -42,7 +47,10 @@ async def upload_file(file: UploadFile = File(...)):
 
 
 @router.get("/{stored_name}/download")
-def download_file(stored_name: str):
+def download_file(
+    stored_name: str,
+    current_user=Depends(get_current_user),
+):
     key = f"uploads/{stored_name}"
     download_url = storage_service.download_url(key, stored_name)
 

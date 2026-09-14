@@ -1,5 +1,7 @@
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.auth.password import hash_password
 from app.model.user import User
 from app.schema.user import UserCreate
 
@@ -40,16 +42,21 @@ class UserService:
     ):
 
 
+        normalized_email = data.email.strip().lower()
+        if db.query(User.id).filter(User.email == normalized_email).first():
+            raise ValueError("邮箱已存在")
+
         user=User(
             name=data.name,
-            email=data.email
+            email=normalized_email,
+            password_hash=hash_password(data.password)
         )
 
-
-        return self.dal.create(
-            db,
-            user
-        )
+        try:
+            return self.dal.create(db, user)
+        except IntegrityError:
+            db.rollback()
+            raise ValueError("邮箱已存在")
 
 
 
