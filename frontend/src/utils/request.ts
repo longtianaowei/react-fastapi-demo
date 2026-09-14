@@ -1,6 +1,6 @@
 import axios, { type AxiosError, type AxiosRequestConfig } from "axios";
 
-import type { ApiResponse } from "../types/response";
+import type { ApiResponse } from "@/types/response";
 
 const client = axios.create({
   baseURL: "http://localhost:8000",

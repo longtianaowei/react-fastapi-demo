@@ -1,7 +1,7 @@
-import type { PageData } from "../types/response";
-import type { User } from "../types/user";
+import type { PageData } from "@/types/response";
+import type { User } from "@/types/user";
 
-import request from "./request";
+import request from "@/utils/request";
 
 export function getUsers(page = 1, pageSize = 10) {
   return request.get<PageData<User>>("/users/all", {
