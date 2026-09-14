@@ -1,50 +1,31 @@
 import hashlib
 import os
 import secrets
-from datetime import datetime, timedelta, timezone
 
-from sqlalchemy.orm import Session
-
-from app.model.user import RefreshToken
+from app.redis_client import redis_client
 
 
 REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
+REFRESH_TOKEN_TTL = REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
+REFRESH_TOKEN_PREFIX = "auth:refresh:"
 
 
-def create_refresh_token(db: Session, user_id: int):
+def _token_key(raw_token: str):
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    return f"{REFRESH_TOKEN_PREFIX}{token_hash}"
+
+
+def create_refresh_token(db, user_id: int):
     raw_token = secrets.token_urlsafe(48)
-    token = RefreshToken(
-        user_id=user_id,
-        token_hash=hashlib.sha256(raw_token.encode()).hexdigest(),
-        expires_at=datetime.now(timezone.utc)
-        + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
-    )
-    db.add(token)
-    db.flush()
+    redis_client.setex(_token_key(raw_token), REFRESH_TOKEN_TTL, str(user_id))
     return raw_token
 
 
-def consume_refresh_token(db: Session, raw_token: str):
-    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
-    token = (
-        db.query(RefreshToken)
-        .filter(RefreshToken.token_hash == token_hash)
-        .with_for_update()
-        .first()
-    )
+def consume_refresh_token(db, raw_token: str):
+    key = _token_key(raw_token)
+    user_id = redis_client.getdel(key)
 
-    if not token or token.revoked:
+    if not user_id:
         return None
 
-    expires_at = token.expires_at
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-
-    if expires_at < datetime.now(timezone.utc):
-        token.revoked = True
-        db.flush()
-        return None
-
-    token.revoked = True
-    db.flush()
-    return token.user_id
+    return int(user_id)
