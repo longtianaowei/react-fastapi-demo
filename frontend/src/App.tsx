@@ -25,7 +25,7 @@ function App() {
     setNotice(null);
     try {
       const response = await getUsers();
-      setUsers(response.data);
+      setUsers(response.items);
     } catch {
       setNotice({ type: "error", message: "无法连接到服务，请确认后端已启动。" });
     } finally {
@@ -38,7 +38,7 @@ function App() {
 
     getUsers()
       .then((response) => {
-        if (active) setUsers(response.data);
+        if (active) setUsers(response.items);
       })
       .catch(() => {
         if (active) setNotice({ type: "error", message: "无法连接到服务，请确认后端已启动。" });

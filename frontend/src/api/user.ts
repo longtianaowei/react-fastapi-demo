@@ -1,50 +1,31 @@
-import axios from "axios";
+import type { PageData } from "../types/response";
+import type { User } from "../types/user";
 
-import type {User} from "../types/user";
+import request from "./request";
 
-
-const request =
-axios.create({
-
-    baseURL:
-    "http://localhost:8000"
-
-});
-
-
-
-export function getUsers(){
-
-    return request.get<User[]>(
-        "/users/all"
-    );
-
+export function getUsers(page = 1, pageSize = 10) {
+  return request.get<PageData<User>>("/users/all", {
+    params: {
+      page,
+      page_size: pageSize,
+    },
+  });
 }
 
-
-
-export function createUser(
-    data:{
-        name:string;
-        email:string;
-    }
-){
-
-    return request.post(
-        "/users/create",
-        data
-    );
-
+export function createUser(data: { name: string; email: string }) {
+  return request.post<User>("/users/create", data);
 }
 
+export function updateUser(
+  id: number,
+  data: {
+    name: string;
+    email: string;
+  },
+) {
+  return request.put<User>(`/users/${id}`, data);
+}
 
-
-export function deleteUser(
-    id:number
-){
-
-    return request.delete(
-        `/users/${id}`
-    );
-
+export function deleteUser(id: number) {
+  return request.delete<User>(`/users/${id}`);
 }
