@@ -1,17 +1,25 @@
-import select
-
 from sqlalchemy.orm import Session
 
 from app.model.user import User
 
+
 class UserDAL:
 
-    def get_all(
+    def get_page(
         self,
-        db:Session
+        db:Session,
+        page:int,
+        page_size:int
     ):
 
-        return db.query(User).all()
+        query=db.query(User)
+
+        return (
+            query.offset((page-1)*page_size)
+            .limit(page_size)
+            .all(),
+            query.count()
+        )
 
 
 

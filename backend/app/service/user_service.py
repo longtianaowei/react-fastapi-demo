@@ -15,13 +15,21 @@ class UserService:
         self.dal=UserDAL()
 
 
-#   `获取所有用户`
+#   `获取用户分页`
     def list(
         self,
-        db:Session
+        db:Session,
+        page:int,
+        page_size:int
     ):
 
-        return self.dal.get_all(db)
+        items,total=self.dal.get_page(
+            db,
+            page,
+            page_size
+        )
+
+        return items,total
 
 
 

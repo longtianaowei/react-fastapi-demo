@@ -1,10 +1,10 @@
-from fastapi import APIRouter,Depends
+from fastapi import APIRouter,Depends,Query
 
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 
-from app.schema.response import ApiResponse
+from app.schema.response import ApiResponse,PageData
 from app.schema.user import (
     UserCreate,
     UserResponse
@@ -26,14 +26,27 @@ service=UserService()
 
 @router.get(
     "/all",
-    response_model=ApiResponse[list[UserResponse]]
+    response_model=ApiResponse[PageData[UserResponse]]
 )
 def list_users(
+    page:int=Query(1,ge=1),
+    page_size:int=Query(10,ge=1,le=100),
     db:Session=Depends(get_db)
 ):
 
+    items,total=service.list(
+        db,
+        page,
+        page_size
+    )
+
     return ApiResponse.success(
-        data=service.list(db)
+        data=PageData.create(
+            items=items,
+            total=total,
+            page=page,
+            page_size=page_size
+        )
     )
 
 
