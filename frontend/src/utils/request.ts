@@ -20,12 +20,21 @@ client.interceptors.response.use(
 
     return result.data as never;
   },
-  (error: AxiosError<{ message?: string; detail?: string }>) => {
-    const message =
-      error.response?.data?.message ??
-      error.response?.data?.detail ??
-      error.message;
+  async (error: AxiosError<{ message?: string; detail?: string } | Blob>) => {
+    const data = error.response?.data;
 
+    if (data instanceof Blob) {
+      const text = await data.text();
+
+      try {
+        const result = JSON.parse(text) as { message?: string; detail?: string };
+        return Promise.reject(new Error(result.message ?? result.detail ?? error.message));
+      } catch {
+        return Promise.reject(new Error(text || error.message));
+      }
+    }
+
+    const message = data?.message ?? data?.detail ?? error.message;
     return Promise.reject(new Error(message));
   },
 );
@@ -45,8 +54,28 @@ const request = {
     return client.post<ApiResponse<T>>(url, formData, config) as unknown as Promise<T>;
   },
 
-  download(url: string, config?: AxiosRequestConfig): Promise<Blob> {
-    return client.get(url, { ...config, responseType: "blob" }) as unknown as Promise<Blob>;
+  async download(
+    url: string,
+    filename: string,
+    config?: AxiosRequestConfig,
+  ): Promise<void> {
+    const blob = await client.get(url, {
+      ...config,
+      responseType: "blob",
+    });
+    const objectUrl = URL.createObjectURL(blob.data);
+    const link = document.createElement("a");
+
+    link.href = objectUrl;
+    link.download = filename;
+    link.style.display = "none";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    window.setTimeout(() => {
+      URL.revokeObjectURL(objectUrl);
+    }, 1000);
   },
 
   put<T>(url: string, data: unknown): Promise<T> {
