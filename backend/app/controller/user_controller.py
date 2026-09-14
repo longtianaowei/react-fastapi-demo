@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 
+from app.schema.response import ApiResponse
 from app.schema.user import (
     UserCreate,
     UserResponse
@@ -25,39 +26,59 @@ service=UserService()
 
 @router.get(
     "/all",
-    response_model=list[UserResponse]
+    response_model=ApiResponse[list[UserResponse]]
 )
 def list_users(
     db:Session=Depends(get_db)
 ):
 
-    return service.list(db)
+    return ApiResponse.success(
+        data=service.list(db)
+    )
 
 
 
 @router.post(
     "/create",
-    response_model=UserResponse
+    response_model=ApiResponse[UserResponse]
 )
 def create_user(
     user:UserCreate,
     db:Session=Depends(get_db)
 ):
 
-    return service.create(
-        db,
-        user
+    return ApiResponse.success(
+        data=service.create(
+            db,
+            user
+        ),
+        message="创建成功"
     )
 
 
 
-@router.delete("/{id}")
+@router.delete(
+    "/{id}",
+    response_model=ApiResponse[UserResponse]
+)
 def delete_user(
     id:int,
     db:Session=Depends(get_db)
 ):
 
-    return service.delete(
+    user=service.delete(
         db,
         id
+    )
+
+    if not user:
+
+        return ApiResponse.error(
+            code=404,
+            message="用户不存在"
+        )
+
+    return ApiResponse.success(
+        data=user,
+        message="删除成功"
     )
