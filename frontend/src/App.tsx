@@ -4,7 +4,7 @@ import { login, logout, me, restoreSession } from "./api/auth";
 import type { CurrentUser } from "./api/auth";
 import { createUser, deleteUser, getUsers } from "./api/user";
 import type { User } from "./types/user";
-import { SESSION_EXPIRED_EVENT } from "./utils/request";
+import request, { SESSION_EXPIRED_EVENT } from "./utils/request";
 import "./styles.css";
 
 type Notice = { type: "success" | "error"; message: string } | null;
@@ -28,6 +28,8 @@ function App() {
   const [showForm, setShowForm] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
   const [form, setForm] = useState({ name: "", email: "", password: "" });
+  const [streamText, setStreamText] = useState("");
+  const [isStreaming, setIsStreaming] = useState(false);
 
   async function load() {
     setIsLoading(true);
@@ -105,6 +107,27 @@ function App() {
       setNotice(null);
       setShowForm(false);
       setIsLoggingOut(false);
+    }
+  }
+
+  async function runStream() {
+    setStreamText("");
+    setIsStreaming(true);
+
+    try {
+      await request.stream("/sse/demo", {
+        onMessage(data, event) {
+          if (event === "done") return;
+          setStreamText((current) => current + data);
+        },
+      });
+    } catch (error) {
+      setNotice({
+        type: "error",
+        message: error instanceof Error ? error.message : "流式输出失败。",
+      });
+    } finally {
+      setIsStreaming(false);
     }
   }
 
@@ -226,6 +249,21 @@ function App() {
             </div>
             <button className="primary-button" onClick={() => setShowForm(true)}>
               <span aria-hidden="true">＋</span> 新增用户
+            </button>
+          </section>
+
+          <section className="stream-demo" aria-labelledby="stream-title">
+            <div>
+              <p className="eyebrow">AI / Streaming</p>
+              <h2 id="stream-title">SSE 流式输出</h2>
+              <p className="subtitle">内容会随着服务器推送逐段显示，模拟 AI 打字机效果。</p>
+            </div>
+            <div className="stream-output" aria-live="polite">
+              {streamText || (isStreaming ? "正在生成…" : "点击按钮开始体验")}
+              {isStreaming && <span className="typing-cursor" aria-hidden="true" />}
+            </div>
+            <button className="primary-button" onClick={() => void runStream()} disabled={isStreaming}>
+              {isStreaming ? "生成中" : "开始流式输出"}
             </button>
           </section>
 

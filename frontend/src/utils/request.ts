@@ -28,6 +28,14 @@ type RetryRequestConfig = InternalAxiosRequestConfig & {
   _retry?: boolean;
 };
 
+type StreamOptions = {
+  method?: "GET" | "POST";
+  data?: unknown;
+  signal?: AbortSignal;
+  onMessage: (data: string, event: string) => void;
+  onDone?: () => void;
+};
+
 let accessToken: string | null = null;
 let refreshPromise: Promise<TokenData> | null = null;
 
@@ -71,6 +79,65 @@ client.interceptors.request.use((config) => {
 
   return config;
 });
+
+async function stream(url: string, options: StreamOptions): Promise<void> {
+  const send = async (token: string | null) => fetch(`${BASE_URL}${url}`, {
+    method: options.method ?? "GET",
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.data !== undefined ? { "Content-Type": "application/json" } : {}),
+    },
+    credentials: "include",
+    body: options.data === undefined ? undefined : JSON.stringify(options.data),
+    signal: options.signal,
+  });
+
+  let response = await send(accessToken);
+
+  if (response.status === 401 && accessToken) {
+    try {
+      const tokens = await refreshTokens();
+      response = await send(tokens.access_token);
+    } catch {
+      expireSession();
+      throw new Error("会话已失效，请重新登录");
+    }
+  }
+
+  if (!response.ok || !response.body) {
+    throw new Error(`流式请求失败（${response.status}）`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  const handleEvent = (rawEvent: string) => {
+    const lines = rawEvent.split("\n");
+    let event = "message";
+    const data: string[] = [];
+
+    for (const line of lines) {
+      if (line.startsWith("event:")) event = line.slice(6).trim();
+      if (line.startsWith("data:")) data.push(line.slice(5).trimStart());
+    }
+
+    if (data.length > 0) options.onMessage(data.join("\\n"), event);
+  };
+
+  while (true) {
+    const { value, done } = await reader.read();
+    buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
+    const events = buffer.split("\\n\\n");
+    buffer = events.pop() ?? "";
+
+    for (const event of events) handleEvent(event.replace(/\r\n/g, "\n"));
+    if (done) break;
+  }
+
+  if (buffer.trim()) handleEvent(buffer.replace(/\r\n/g, "\n"));
+  options.onDone?.();
+}
 
 client.interceptors.response.use(
   (response) => {
@@ -155,6 +222,8 @@ const request = {
     formData.append(fieldName, file);
     return client.post<ApiResponse<T>>(url, formData, config) as unknown as Promise<T>;
   },
+
+  stream,
 
   async download(url: string, filename: string, config?: AxiosRequestConfig): Promise<void> {
     const response = await client.get<Blob>(url, {
