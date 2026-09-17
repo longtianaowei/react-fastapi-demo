@@ -9,6 +9,8 @@ export interface CurrentUser {
   id: number;
   name: string;
   email: string;
+  roles?: string[];
+  permissions?: string[];
 }
 
 export async function login(email: string, password: string) {

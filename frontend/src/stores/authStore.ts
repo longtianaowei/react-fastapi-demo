@@ -7,13 +7,17 @@ type AuthState = {
   isRestoring: boolean;
   setCurrentUser: (currentUser: CurrentUser | null) => void;
   setIsRestoring: (isRestoring: boolean) => void;
+  sessionError: string;
+  setSessionError: (sessionError: string) => void;
   clearAuth: () => void;
 };
 
 export const useAuthStore = create<AuthState>((set) => ({
   currentUser: null,
   isRestoring: true,
+  sessionError: "",
   setCurrentUser: (currentUser) => set({ currentUser }),
   setIsRestoring: (isRestoring) => set({ isRestoring }),
+  setSessionError: (sessionError) => set({ sessionError }),
   clearAuth: () => set({ currentUser: null }),
 }));
