@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { login, logout, me, restoreSession } from "./api/auth";
+import { ScrollContainer } from "./components/ScrollContainer";
+import { useOffsetPagination } from "./hooks/useOffsetPagination";
 import type { CurrentUser } from "./api/auth";
 import { createUser, deleteUser, getUsers } from "./api/user";
 import type { User } from "./types/user";
@@ -20,9 +23,19 @@ function App() {
   const [loginError, setLoginError] = useState("");
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const [users, setUsers] = useState<User[]>([]);
   const [query, setQuery] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const queryClient = useQueryClient();
+  const {
+    items: users,
+    total,
+    isLoading,
+    isFetchingNextPage,
+    hasNextPage,
+    fetchNextPage,
+  } = useOffsetPagination<User>({
+    fetchPage: getUsers,
+    enabled: Boolean(currentUser),
+  });
   const [isSaving, setIsSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -31,26 +44,13 @@ function App() {
   const [streamText, setStreamText] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
 
-  async function load() {
-    setIsLoading(true);
-    setNotice(null);
-    try {
-      const response = await getUsers();
-      setUsers(response.items);
-    } catch {
-      setNotice({ type: "error", message: "无法连接到服务，请确认后端已启动。" });
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
   useEffect(() => {
     let active = true;
 
     const handleSessionExpired = () => {
       if (!active) return;
       setCurrentUser(null);
-      setUsers([]);
+      void queryClient.removeQueries({ predicate: ({ queryKey }) => queryKey[0] === "offset-pagination" });
       setShowForm(false);
       setLoginError("会话已失效，请重新登录。");
     };
@@ -72,13 +72,13 @@ function App() {
       active = false;
       window.removeEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
     };
-  }, []);
+  }, [queryClient]);
 
   useEffect(() => {
     if (currentUser) {
-      queueMicrotask(() => void load());
+      queueMicrotask(() => void queryClient.invalidateQueries({ predicate: ({ queryKey }) => queryKey[0] === "offset-pagination" }));
     }
-  }, [currentUser]);
+  }, [currentUser, queryClient]);
 
   async function signIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -103,7 +103,7 @@ function App() {
       await logout();
     } finally {
       setCurrentUser(null);
-      setUsers([]);
+      void queryClient.removeQueries({ predicate: ({ queryKey }) => queryKey[0] === "offset-pagination" });
       setNotice(null);
       setShowForm(false);
       setIsLoggingOut(false);
@@ -145,7 +145,7 @@ function App() {
       });
       setForm({ name: "", email: "", password: "" });
       setShowForm(false);
-      await load();
+      await queryClient.invalidateQueries({ predicate: ({ queryKey }) => queryKey[0] === "offset-pagination" });
       setNotice({ type: "success", message: "用户已添加。" });
     } catch {
       setNotice({ type: "error", message: "添加失败，请稍后重试。" });
@@ -161,7 +161,7 @@ function App() {
     setNotice(null);
     try {
       await deleteUser(user.id);
-      setUsers((current) => current.filter((item) => item.id !== user.id));
+      await queryClient.invalidateQueries({ predicate: ({ queryKey }) => queryKey[0] === "offset-pagination" });
       setNotice({ type: "success", message: "用户已删除。" });
     } catch {
       setNotice({ type: "error", message: "删除失败，请稍后重试。" });
@@ -268,7 +268,7 @@ function App() {
           </section>
 
           <section className="stats" aria-label="用户概览">
-            <div className="stat-item"><span>用户总数</span><strong>{users.length}</strong><small>当前已录入账户</small></div>
+            <div className="stat-item"><span>用户总数</span><strong>{total}</strong><small>当前已录入账户</small></div>
             <div className="stat-item"><span>搜索结果</span><strong>{filteredUsers.length}</strong><small>{query ? "匹配当前关键词" : "显示全部用户"}</small></div>
             <div className="stat-item stat-accent"><span>服务状态</span><strong>{notice?.type === "error" ? "异常" : "正常"}</strong><small><i className="status-dot" /> API 服务</small></div>
           </section>
@@ -294,7 +294,12 @@ function App() {
               </label>
             </div>
 
-            <div className="table-wrap">
+            <ScrollContainer
+              className="table-wrap"
+              hasMore={Boolean(hasNextPage)}
+              isLoading={isFetchingNextPage}
+              onLoadMore={() => void fetchNextPage()}
+            >
               {isLoading ? (
                 <div className="state"><span className="spinner" /><strong>正在加载用户</strong><p>请稍候片刻</p></div>
               ) : filteredUsers.length === 0 ? (
@@ -314,7 +319,7 @@ function App() {
                   </tbody>
                 </table>
               )}
-            </div>
+            </ScrollContainer>
           </section>
         </div>
       </main>

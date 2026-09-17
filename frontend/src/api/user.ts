@@ -3,12 +3,9 @@ import type { User } from "@/types/user";
 
 import request from "@/utils/request";
 
-export function getUsers(page = 1, pageSize = 10) {
+export function getUsers({ page, page_size }: { page: number; page_size: number }) {
   return request.get<PageData<User>>("/users/all", {
-    params: {
-      page,
-      page_size: pageSize,
-    },
+    params: { page, page_size },
   });
 }
 
