@@ -31,3 +31,19 @@ class User(Base):
         default=False,
         nullable=False,
     )
+
+    mini_program_openid: Mapped[str | None] = mapped_column(
+        String(100),
+        unique=True,
+        nullable=True,
+        index=True,
+    )
+
+    unionid: Mapped[str | None] = mapped_column(
+        String(100),
+        unique=True,
+        nullable=True,
+        index=True,
+    )
+
+    avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True)

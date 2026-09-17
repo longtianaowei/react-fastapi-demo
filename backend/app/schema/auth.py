@@ -12,14 +12,23 @@ class LoginRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class TokenResponse(BaseModel):
+class WebTokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+
+class MiniProgramTokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    refresh_token: str
 
 
 class CurrentUserResponse(BaseModel):
     id: int
     name: str
     email: EmailStr
+    avatar_url: str | None = None
+    roles: list[str] = []
+    permissions: list[str] = []
 
     model_config = ConfigDict(from_attributes=True)

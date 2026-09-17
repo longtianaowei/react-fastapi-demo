@@ -16,12 +16,16 @@ from app.model.user import User
 from app.schema.auth import (
     CurrentUserResponse,
     LoginRequest,
-    TokenResponse,
+    MiniProgramTokenResponse,
+    WebTokenResponse,
 )
+from app.schema.mini_program import MiniProgramLoginRequest, MiniProgramRefreshRequest
 from app.schema.response import ApiResponse
+from app.service.mini_program_auth_service import MiniProgramAuthService
 
 
 router = APIRouter(prefix="/auth", tags=["认证"])
+mini_program_auth_service = MiniProgramAuthService()
 
 REFRESH_TOKEN_COOKIE_NAME = "refresh_token"
 REFRESH_TOKEN_COOKIE_SECURE = os.getenv(
@@ -41,7 +45,7 @@ def set_refresh_token_cookie(response: Response, refresh_token: str):
     )
 
 
-@router.post("/login", response_model=ApiResponse[TokenResponse])
+@router.post("/login", response_model=ApiResponse[WebTokenResponse])
 def login(data: LoginRequest, response: Response, db: Session = Depends(get_db)):
     identifier = data.identifier.strip()
     user = (
@@ -53,7 +57,7 @@ def login(data: LoginRequest, response: Response, db: Session = Depends(get_db))
     if not user or not verify_password(data.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="账号或密码错误")
 
-    token_response = TokenResponse(
+    token_response = WebTokenResponse(
         access_token=create_access_token(user.id, user.name),
     )
     refresh_token = create_refresh_token(db, user.id)
@@ -62,7 +66,28 @@ def login(data: LoginRequest, response: Response, db: Session = Depends(get_db))
     return ApiResponse.success(data=token_response)
 
 
-@router.post("/refresh", response_model=ApiResponse[TokenResponse])
+@router.post("/mini-program-login", response_model=ApiResponse[MiniProgramTokenResponse])
+def mini_program_login(data: MiniProgramLoginRequest, db: Session = Depends(get_db)):
+    _, token_response = mini_program_auth_service.login(db, data)
+    return ApiResponse.success(data=token_response)
+
+
+@router.post("/mini-program-refresh", response_model=ApiResponse[MiniProgramTokenResponse])
+def mini_program_refresh(data: MiniProgramRefreshRequest, db: Session = Depends(get_db)):
+    user_id = consume_refresh_token(db, data.refresh_token)
+    user = db.query(User).filter(User.id == user_id).first() if user_id else None
+    if not user:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="刷新凭证无效或已过期")
+    new_refresh_token = create_refresh_token(db, user.id)
+    db.commit()
+    return ApiResponse.success(data=MiniProgramTokenResponse(
+        access_token=create_access_token(user.id, user.name),
+        refresh_token=new_refresh_token,
+    ))
+
+
+@router.post("/refresh", response_model=ApiResponse[WebTokenResponse])
 def refresh_token(response: Response, refresh_token: str | None = Cookie(default=None), db: Session = Depends(get_db)):
     user_id = consume_refresh_token(db, refresh_token) if refresh_token else None
     user = db.query(User).filter(User.id == user_id).first() if user_id else None
@@ -71,7 +96,7 @@ def refresh_token(response: Response, refresh_token: str | None = Cookie(default
         db.rollback()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="刷新凭证无效或已过期")
 
-    token_response = TokenResponse(
+    token_response = WebTokenResponse(
         access_token=create_access_token(user.id, user.name),
     )
     new_refresh_token = create_refresh_token(db, user.id)
