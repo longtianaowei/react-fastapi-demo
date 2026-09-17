@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
+import { useAuthStore } from "./stores/authStore";
 import { useQueryClient } from "@tanstack/react-query";
 import { login, logout, me, restoreSession } from "./api/auth";
 import { ScrollContainer } from "./components/ScrollContainer";
 import { useOffsetPagination } from "./hooks/useOffsetPagination";
-import type { CurrentUser } from "./api/auth";
 import { createUser, deleteUser, getUsers } from "./api/user";
 import type { User } from "./types/user";
 import request, { SESSION_EXPIRED_EVENT } from "./utils/request";
@@ -17,8 +17,11 @@ function initials(name: string) {
 }
 
 function App() {
-  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
-  const [isRestoring, setIsRestoring] = useState(true);
+  const currentUser = useAuthStore((state) => state.currentUser);
+  const isRestoring = useAuthStore((state) => state.isRestoring);
+  const setCurrentUser = useAuthStore((state) => state.setCurrentUser);
+  const setIsRestoring = useAuthStore((state) => state.setIsRestoring);
+  const clearAuth = useAuthStore((state) => state.clearAuth);
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
   const [loginError, setLoginError] = useState("");
   const [isLoggingIn, setIsLoggingIn] = useState(false);
@@ -49,7 +52,7 @@ function App() {
 
     const handleSessionExpired = () => {
       if (!active) return;
-      setCurrentUser(null);
+      clearAuth();
       void queryClient.removeQueries({ predicate: ({ queryKey }) => queryKey[0] === "offset-pagination" });
       setShowForm(false);
       setLoginError("会话已失效，请重新登录。");
@@ -72,7 +75,7 @@ function App() {
       active = false;
       window.removeEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
     };
-  }, [queryClient]);
+  }, [clearAuth, queryClient, setCurrentUser, setIsRestoring]);
 
   useEffect(() => {
     if (currentUser) {
@@ -102,7 +105,7 @@ function App() {
     try {
       await logout();
     } finally {
-      setCurrentUser(null);
+      clearAuth();
       void queryClient.removeQueries({ predicate: ({ queryKey }) => queryKey[0] === "offset-pagination" });
       setNotice(null);
       setShowForm(false);
